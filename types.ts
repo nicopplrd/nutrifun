@@ -47,3 +47,9 @@ export interface UserGoal {
   carbs: number;
   fat: number;
 }
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  avatar?: string;
+}

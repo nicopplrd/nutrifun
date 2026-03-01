@@ -2,18 +2,21 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Settings, ChefHat } from 'lucide-react';
+import { Settings, ChefHat, LogOut } from 'lucide-react';
 
-import { DailyStats, MealLog, FoodItem, MealType, UserGoal, Recipe } from './types';
+import { DailyStats, MealLog, FoodItem, MealType, UserGoal, Recipe, UserProfile } from './types';
 import { DEFAULT_GOAL, STORAGE_KEY, MEAL_TYPES_LIST, RECIPES_STORAGE_KEY, USER_SETTINGS_KEY } from './constants';
 import { getMotivationalMessage } from './services/geminiService';
 import { NutritionCard } from './components/NutritionCard';
 import { AddFoodModal } from './components/AddFoodModal';
 import { RecipeModal } from './components/RecipeModal';
 import { GoalModal } from './components/GoalModal';
+import { AuthScreen } from './components/AuthScreen';
 
 const App: React.FC = () => {
   // --- State ---
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  
   const [dailyStats, setDailyStats] = useState<Record<string, DailyStats>>({});
   const [currentDate, setCurrentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [goal, setGoal] = useState<UserGoal>(DEFAULT_GOAL);
@@ -29,50 +32,69 @@ const App: React.FC = () => {
 
   // --- Effects ---
 
-  // Load data on mount
+  // Load data when user changes
   useEffect(() => {
-    const savedData = localStorage.getItem(STORAGE_KEY);
+    if (!currentUser) return;
+
+    const userStorageKey = `${STORAGE_KEY}_${currentUser.id}`;
+    const userRecipesKey = `${RECIPES_STORAGE_KEY}_${currentUser.id}`;
+    const userSettingsKey = `${USER_SETTINGS_KEY}_${currentUser.id}`;
+
+    const savedData = localStorage.getItem(userStorageKey);
     if (savedData) {
       try {
-        const parsed = JSON.parse(savedData);
-        setDailyStats(parsed);
+        setDailyStats(JSON.parse(savedData));
       } catch (e) {
         console.error("Failed to parse storage", e);
+        setDailyStats({});
       }
+    } else {
+        setDailyStats({});
     }
 
-    const savedRecipes = localStorage.getItem(RECIPES_STORAGE_KEY);
+    const savedRecipes = localStorage.getItem(userRecipesKey);
     if (savedRecipes) {
       try {
         setRecipes(JSON.parse(savedRecipes));
-      } catch (e) { console.error(e); }
+      } catch (e) { console.error(e); setRecipes([]); }
+    } else {
+        setRecipes([]);
     }
 
-    const savedGoal = localStorage.getItem(USER_SETTINGS_KEY);
+    const savedGoal = localStorage.getItem(userSettingsKey);
     if (savedGoal) {
       try {
         setGoal(JSON.parse(savedGoal));
-      } catch (e) { console.error(e); }
+      } catch (e) { console.error(e); setGoal(DEFAULT_GOAL); }
+    } else {
+        setGoal(DEFAULT_GOAL);
     }
-  }, []);
+  }, [currentUser]);
 
   // Save data on change
   useEffect(() => {
+    if (!currentUser) return;
+    const userStorageKey = `${STORAGE_KEY}_${currentUser.id}`;
     if (Object.keys(dailyStats).length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(dailyStats));
+      localStorage.setItem(userStorageKey, JSON.stringify(dailyStats));
     }
-  }, [dailyStats]);
+  }, [dailyStats, currentUser]);
 
   useEffect(() => {
-    localStorage.setItem(RECIPES_STORAGE_KEY, JSON.stringify(recipes));
-  }, [recipes]);
+    if (!currentUser) return;
+    const userRecipesKey = `${RECIPES_STORAGE_KEY}_${currentUser.id}`;
+    localStorage.setItem(userRecipesKey, JSON.stringify(recipes));
+  }, [recipes, currentUser]);
 
   useEffect(() => {
-    localStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(goal));
-  }, [goal]);
+    if (!currentUser) return;
+    const userSettingsKey = `${USER_SETTINGS_KEY}_${currentUser.id}`;
+    localStorage.setItem(userSettingsKey, JSON.stringify(goal));
+  }, [goal, currentUser]);
 
   // Calculate Streak
   useEffect(() => {
+    if (!currentUser) return;
     // Simple streak logic: consecutive days with at least one log
     let currentStreak = 0;
     const today = new Date();
@@ -92,10 +114,11 @@ const App: React.FC = () => {
         }
     }
     setStreak(currentStreak);
-  }, [dailyStats]);
+  }, [dailyStats, currentUser]);
 
   // Coach Message
   useEffect(() => {
+    if (!currentUser) return;
     const fetchMessage = async () => {
         const currentStats = dailyStats[currentDate];
         const cals = currentStats ? currentStats.totalCalories : 0;
@@ -105,7 +128,7 @@ const App: React.FC = () => {
     };
     fetchMessage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentDate, dailyStats[currentDate]?.totalCalories]); // Only re-fetch if calories change significantly or date changes
+  }, [currentDate, dailyStats[currentDate]?.totalCalories, currentUser]); 
 
 
   // --- Helpers ---
@@ -185,7 +208,6 @@ const App: React.FC = () => {
       }
 
       // Add all items from recipe
-      // We should probably clone them to give them new IDs so they can be removed individually if needed
       const newItems = recipe.items.map(item => ({...item, id: crypto.randomUUID()}));
       mealLog.items.push(...newItems);
 
@@ -242,6 +264,13 @@ const App: React.FC = () => {
     setRecipes(recipes.filter(r => r.id !== id));
   };
 
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setDailyStats({});
+    setRecipes([]);
+    setGoal(DEFAULT_GOAL);
+  };
+
   // Chart Data preparation
   const chartData = useMemo(() => {
     const data = [];
@@ -258,6 +287,10 @@ const App: React.FC = () => {
     return data;
   }, [dailyStats, goal.calories]);
 
+  if (!currentUser) {
+    return <AuthScreen onLogin={setCurrentUser} />;
+  }
+
   // --- Render ---
   return (
     <div className="min-h-screen bg-slate-50 pb-20 md:pb-0">
@@ -269,11 +302,17 @@ const App: React.FC = () => {
             <h1 className="font-display font-bold text-xl text-slate-800">NutriFun</h1>
         </div>
         <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-2 mr-2 bg-slate-100 px-3 py-1 rounded-full">
+                <span className="text-sm font-bold text-slate-600">{currentUser.name}</span>
+            </div>
             <button onClick={() => setIsRecipeModalOpen(true)} className="p-2 text-slate-400 hover:text-primary hover:bg-slate-100 rounded-full transition">
                 <ChefHat className="w-6 h-6" />
             </button>
             <button onClick={() => setIsGoalModalOpen(true)} className="p-2 text-slate-400 hover:text-primary hover:bg-slate-100 rounded-full transition">
                 <Settings className="w-6 h-6" />
+            </button>
+            <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition" title="Déconnexion">
+                <LogOut className="w-6 h-6" />
             </button>
             <div className="flex items-center gap-1 bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-sm font-bold">
                 🔥 {streak}

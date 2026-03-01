@@ -17,3 +17,4 @@ export const MEAL_TYPES_LIST = [
 export const STORAGE_KEY = 'nutrifun_data_v1';
 export const USER_SETTINGS_KEY = 'nutrifun_settings_v1';
 export const RECIPES_STORAGE_KEY = 'nutrifun_recipes_v1';
+export const USERS_STORAGE_KEY = 'nutrifun_users_v1';
