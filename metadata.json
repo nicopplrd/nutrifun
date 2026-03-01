@@ -1,0 +1,5 @@
+{
+  "name": "NutriFun AI",
+  "description": "Une application ludique et simple pour suivre vos calories et macronutriments, propulsée par l'IA Gemini pour une estimation rapide des repas.",
+  "requestFramePermissions": []
+}
